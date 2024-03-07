@@ -1,4 +1,5 @@
-const fs = require("fs");
+const fs = require("node:fs");
+const path = require("node:path");
 const xlsx = require("xlsx");
 
 const C = require("../constants");
@@ -337,29 +338,34 @@ const isPointInPolygon = (vertices, lat, lng) => {
   return oddNodes;
 };
 
-const writeLog = async (name, data) => {
+const getAppRootDir = (currentDir) => {
+  while (!fs.existsSync(path.join(currentDir, "package.json"))) {
+    currentDir = path.join(currentDir, "..");
+  }
+  return currentDir;
+};
+
+const writeLog = (name, data) => {
   const now = new Date();
   const date = new Date().getUTCDate();
   const month = String(now.getUTCMonth() + 1).padStart(2, "0"); // months from 1-12
   const year = now.getUTCFullYear();
 
-  const logDir = path.join(getAppRootDir(__dirname), "logs", log);
+  const logDir = path.join(getAppRootDir(__dirname), "logs", name);
 
-  if (!fs.existsSync(logDir)) {
-    fs.mkdir(logDir, { recursive: true }, (err) => {
-      if (err) throw err;
-    });
-  }
+  if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
 
-  const logFile = path.join(logDir, `${log}_${year}-${month}-${date}.txt`);
+  const logFile = path.join(logDir, `${name}_${year}-${month}-${date}.log`);
 
   let str = `[${new Date().toISOString().replace("T", " ").split(".")[0]}] `;
 
-  str += "=> " + logData + "\n";
+  str += "=> " + data + "\n";
 
-  fs.appendFile(logFile, str, (err) => {
-    if (err) throw err;
-  });
+  try {
+    fs.appendFileSync(logFile, str);
+  } catch (err) {
+    console.log(err);
+  }
 };
 
 const convUTCTo0530 = (date) => {

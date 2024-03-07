@@ -23,11 +23,11 @@ const schema = new mongoose.Schema(
       type: String,
       required: [true, C.FIELD_IS_REQ],
       enum: {
-        values: [C.SUPERADMIN, C.ADMIN, C.MANAGER, C.PARENT, C.STUDENT],
+        values: [C.SUPERADMIN, C.ADMIN, C.MANAGER, C.USER],
         message: C.VALUE_NOT_SUP,
       },
     },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "users" },
+    manager: { type: mongoose.Schema.Types.ObjectId, ref: "users" },
   },
   { timestamps: true }
 );
@@ -35,9 +35,26 @@ const schema = new mongoose.Schema(
 schema.index({ email: 1 }, { unique: true });
 
 schema.pre("save", async function (next) {
-  if (!this.isModified("password")) next();
+  if (this.isModified("password")) {
+    this.password = await bcrypt.hash(this.password, 10);
+  }
 
-  this.password = await bcrypt.hash(this.password, 10);
+  if (this.type === C.USER) {
+    if (!this.manager) {
+      throw new Error("manager is required!");
+    }
+  }
+
+  next();
+});
+
+schema.pre("updateOne", function (next) {
+  this.setOptions({ runValidators: true });
+  next();
+});
+
+schema.pre("updateMany", function (next) {
+  this.setOptions({ runValidators: true });
   next();
 });
 

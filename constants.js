@@ -2,8 +2,7 @@ const STRINGS = {
   SUPERADMIN: "superadmin",
   ADMIN: "admin",
   MANAGER: "manager",
-  PARENT: "parent",
-  STUDENT: "student",
+  USER: "user",
   FIELD_IS_REQ: "%F% is required!",
   FIELD_IS_INVALID: "%F% is invalid!",
   VALUE_NOT_SUP: "{VALUE} is not supported!",
@@ -21,6 +20,9 @@ const STRINGS = {
 };
 
 const FUNCTIONS = {
+  isAdmin: (type) => [STRINGS.SUPERADMIN, STRINGS.ADMIN].includes(type),
+  isManager: (type) => [STRINGS.MANAGER].includes(type),
+  isUser: (type) => [STRINGS.USER].includes(type),
   getFieldIsReq: (field) => STRINGS.FIELD_IS_REQ.replace("%F%", field),
   getFieldIsInvalid: (field) => STRINGS.FIELD_IS_INVALID.replace("%F%", field),
   getValueNotSup: (val) => STRINGS.VALUE_NOT_SUP.replace("{VALUE}", val),
@@ -41,7 +43,7 @@ const FUNCTIONS = {
       idx
     );
   },
-  getNotValid24HFormat: ({value}) => {
+  getNotValid24HFormat: ({ value }) => {
     return `${value} is not a valid 24-hour time format (HH:MM)!`;
   },
 };

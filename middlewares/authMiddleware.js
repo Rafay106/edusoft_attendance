@@ -4,7 +4,7 @@ const User = require("../models/userModel");
 const C = require("../constants");
 const Student = require("../models/studentModel");
 
-const adminAuthenticate = asyncHandler(async (req, res, next) => {
+const authenticate = asyncHandler(async (req, res, next) => {
   let token;
 
   if (
@@ -68,31 +68,28 @@ const parentAuthenticate = asyncHandler(async (req, res, next) => {
   }
 });
 
-const adminAuthorize = asyncHandler(async (req, res, next) => {
+const adminPanelAuthorize = asyncHandler(async (req, res, next) => {
+  const baseurl = req.baseUrl;
+  const url = req.url;
+  console.log("baseurl :>> ", baseurl);
+  console.log("url :>> ", url);
+
+  if (baseurl !== "/api/admin-panel") return next();
+
   const userType = req.user.type;
 
-  const allowedTypes = [C.SUPERADMIN, C.ADMIN, C.MANAGER];
-  const admins = [C.SUPERADMIN, C.ADMIN];
-
-  if (!allowedTypes.includes(userType)) {
-    res.status(404);
-    throw new Error(C.URL_404);
-  }
-
-  console.log("req.baseUrl :>> ", req.baseUrl);
-  console.log("req.url :>> ", req.url);
-
-  if (admins.includes(userType)) {
+  if (C.isAdmin(userType)) {
     next();
-  } else if (userType === C.MANAGER) {
-    // Allow only some resources
-    if (req.baseUrl === "/api/admin") {
-      if (req.url.includes("/bus")) next();
-      else if (req.url.includes("/student")) next();
-      else {
-        res.status(404);
-        throw new Error(C.URL_404);
-      }
+  } else if (C.isManager(userType)) {
+    next();
+  } else if (C.isUser(userType)) {
+    if (req.url.includes("/bus")) next();
+    else if (req.url.includes("/bus-stop")) next();
+    else if (req.url.includes("/student")) next();
+    else if (req.url.includes("/attendance")) next();
+    else {
+      res.status(404);
+      throw new Error(C.URL_404);
     }
   } else {
     res.status(404);
@@ -100,4 +97,4 @@ const adminAuthorize = asyncHandler(async (req, res, next) => {
   }
 });
 
-module.exports = { adminAuthenticate, parentAuthenticate, adminAuthorize };
+module.exports = { authenticate, parentAuthenticate, adminPanelAuthorize };

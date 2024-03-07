@@ -7,11 +7,12 @@ const School = require("../models/schoolModel");
 const User = require("../models/userModel");
 const Bus = require("../models/busModel");
 const Student = require("../models/studentModel");
+const BusStop = require("../models/busStopModel");
 
 /** 1. User */
 
 // @desc    Get Users
-// @route   POST /api/admin/user
+// @route   GET /api/admin-panel/user
 // @access  Private
 const getUsers = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
@@ -20,8 +21,9 @@ const getUsers = asyncHandler(async (req, res) => {
   const searchField = req.query.sf;
   const searchValue = req.query.sv;
 
-  const query =
-    req.user.type === C.SUPERADMIN ? {} : { createdBy: req.user._id };
+  const query = {};
+
+  if (C.isManager(req.user.type)) query.manager = req.user._id;
 
   if (searchField && searchValue) {
     if (searchField === "all") {
@@ -35,46 +37,151 @@ const getUsers = asyncHandler(async (req, res) => {
     }
   }
 
-  const results = await UC.paginatedQuery(User, query, {}, page, limit, sort, [
-    "createdBy",
-    "email",
-  ]);
+  const select = "email name mobile type manager";
+
+  const results = await UC.paginatedQuery(
+    User,
+    query,
+    select,
+    page,
+    limit,
+    sort,
+    ["manager", "email"]
+  );
 
   if (!results) return res.status(200).json({ msg: C.PAGE_LIMIT_REACHED });
 
-  res.status(200).json({ success: true, ...results });
+  res.status(200).json(results);
+});
+
+// @desc    Get a User
+// @route   GET /api/admin-panel/user/:id
+// @access  Private
+const getUser = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id };
+
+  if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  const user = await User.findOne(query)
+    .select("-password")
+    .populate("manager createdBy", "emali")
+    .lean();
+
+  if (!user) {
+    res.status(404);
+    throw new Error(C.getResourse404Error("User", req.params.id));
+  }
+
+  res.status(200).json(user);
+});
+
+// @desc    Get required data to create a user
+// @route   GET /api/admin-panel/user/required-data
+// @access  Private
+const requiredDataUser = asyncHandler(async (req, res) => {
+  const type = [];
+
+  if (C.isManager(req.user.type)) {
+    type.push(C.USER);
+  } else if (req.user.type === C.ADMIN) {
+    type.push(C.MANAGER);
+  } else if (req.user.type === C.SUPERADMIN) {
+    type.push(C.MANAGER, C.ADMIN, C.SUPERADMIN);
+  }
+
+  res.status(200).json({
+    type: type.sort(),
+  });
 });
 
 // @desc    Create a User
-// @route   POST /api/admin/user
+// @route   POST /api/admin-panel/user
 // @access  Private
 const createUser = asyncHandler(async (req, res) => {
-  const { email, password, name, mobile } = req.body;
+  const { email, name, mobile } = req.body;
   let type = req.body.type;
+  let manager = req.body.manager;
 
+  // validate type
   if (req.user.type === C.ADMIN) {
-    if ([C.SUPERADMIN, C.ADMIN].includes(type)) {
+    if (C.isAdmin(type)) {
       res.status(400);
-      throw new Error("type can only be manager, parent or student");
+      throw new Error("type can only be manager or user");
     }
+  }
+
+  // validate manager
+  if (C.isAdmin(req.user.type) && type === C.USER) {
+    if (!manager) {
+      res.status(400);
+      throw new Error(C.getFieldIsReq("manager"));
+    }
+
+    if (!(await User.any({ _id: manager }))) {
+      res.status(400);
+      throw new Error(C.getResourse404Error("manager", manager));
+    }
+  }
+
+  if (C.isManager(req.user.type)) {
+    type = C.USER;
+    manager = req.user._id;
   }
 
   const user = await User.create({
     email,
-    password,
+    password: "123456",
     name,
     mobile,
     type,
+    manager,
     createdBy: req.user._id,
   });
 
-  res.status(201).json({ success: true, msg: user._id });
+  res.status(201).json({ msg: user._id });
+});
+
+// @desc    Update a User
+// @route   PATCH /api/admin-panel/user/:id
+// @access  Private
+const updateUser = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id };
+
+  if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  if (!(await User.any(query))) {
+    res.status(404);
+    throw new Error(C.getResourse404Error("User", req.params.id));
+  }
+
+  const result = await User.updateOne(query, {
+    $set: {
+      email: req.body.email,
+      name: req.body.name,
+      mobile: req.body.mobile,
+    },
+  });
+
+  res.status(200).json(result);
+});
+
+// @desc    Delete a user
+// @route   DELETE /api/admin-panel/user/:id
+// @access  Private
+const deleteUser = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id };
+
+  if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  const result = await User.deleteOne(query);
+
+  res.status(200).json(result);
 });
 
 /** 2. School */
 
 // @desc    Get all schools
-// @route   GET /api/admin/school
+// @route   GET /api/admin-panel/school
 // @access  Private
 const getSchools = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
@@ -84,6 +191,8 @@ const getSchools = asyncHandler(async (req, res) => {
   const searchValue = req.query.sv;
 
   const query = {};
+
+  if (C.isManager(req.user.type)) query.manager = req.user._id;
 
   if (searchField && searchValue) {
     if (searchField === "all") {
@@ -109,24 +218,23 @@ const getSchools = asyncHandler(async (req, res) => {
   const results = await UC.paginatedQuery(
     School,
     query,
-    {},
+    "name email phone address",
     page,
     limit,
-    sort,
-    ["manager createdBy", "email"]
+    sort
   );
 
   if (!results) return res.status(200).json({ msg: C.PAGE_LIMIT_REACHED });
 
-  res.status(200).json({ success: true, ...results });
+  res.status(200).json(results);
 });
 
 // @desc    Get a school
-// @route   GET /api/admin/school/:id
+// @route   GET /api/admin-panel/school/:id
 // @access  Private
 const getSchool = asyncHandler(async (req, res) => {
   const school = await School.findOne({ _id: req.params.id })
-    .populate("manager createdBy", "email")
+    .populate("user manager", "email")
     .lean();
 
   if (!school) {
@@ -134,16 +242,26 @@ const getSchool = asyncHandler(async (req, res) => {
     throw new Error(C.getResourse404Error("School", req.params.id));
   }
 
-  res.status(200).json({ success: true, msg: school });
+  res.status(200).json(school);
 });
 
 // @desc    Add a school
-// @route   POST /api/admin/school
+// @route   POST /api/admin-panel/school
 // @access  Private
 const addSchool = asyncHandler(async (req, res) => {
-  if (!(await User.any({ _id: req.body.manager }))) {
+  let manager = req.body.manager;
+  let user = req.body.user;
+
+  if (C.isManager(req.user.type)) manager = req.user._id;
+
+  if (!(await User.any({ _id: manager }))) {
     res.status(400);
-    throw new Error(C.getResourse404Error("User", req.body.manager));
+    throw new Error(C.getResourse404Error("manager", manager));
+  }
+
+  if (!(await User.any({ _id: user }))) {
+    res.status(400);
+    throw new Error(C.getResourse404Error("user", user));
   }
 
   const school = await School.create({
@@ -158,15 +276,16 @@ const addSchool = asyncHandler(async (req, res) => {
     lat: parseFloat(req.body.lat).toFixed(6),
     lon: parseFloat(req.body.lon).toFixed(6),
     radius: req.body.radius,
+    timings: req.body.timings,
+    user: req.body.user,
     manager: req.body.manager,
-    createdBy: req.user._id,
   });
 
-  res.status(201).json({ success: true, msg: school._id });
+  res.status(201).json({ msg: school._id });
 });
 
 // @desc    Update a school
-// @route   PUT /api/admin/school/:id
+// @route   PUT /api/admin-panel/school/:id
 // @access  Private
 const updateSchool = asyncHandler(async (req, res) => {
   if (!(await School.any({ _id: req.params.id }))) {
@@ -177,7 +296,14 @@ const updateSchool = asyncHandler(async (req, res) => {
   if (req.body.manager) {
     if (!(await User.any({ _id: req.body.manager }))) {
       res.status(400);
-      throw new Error(C.getResourse404Error("User", req.body.manager));
+      throw new Error(C.getResourse404Error("manager", req.body.manager));
+    }
+  }
+
+  if (req.body.user) {
+    if (!(await User.any({ _id: req.body.user }))) {
+      res.status(400);
+      throw new Error(C.getResourse404Error("user", req.body.user));
     }
   }
 
@@ -201,30 +327,31 @@ const updateSchool = asyncHandler(async (req, res) => {
         radius: req.body.radius,
         "timings.morning": req.body.timings?.morning,
         "timings.afternoon": req.body.timings?.afternoon,
+        user: req.body.user,
         manager: req.body.manager,
       },
     }
   );
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json(result);
 });
 
 // @desc    Delete a school
-// @route   DELETE /api/admin/school/:id
+// @route   DELETE /api/admin-panel/school/:id
 // @access  Private
 const deleteSchool = asyncHandler(async (req, res) => {
-  const result = await School.deleteOne({ _id: req.params.id });
+  const query = { _id: req.params.id };
 
-  if (result.deletedCount === 0) {
-    res.status(400);
-    throw new Error(C.getResourse404Error("School", req.params.id));
-  }
+  if (C.isManager(req.user.type)) query.manager = req.user._id;
 
-  res.status(200).json({ success: true, msg: result });
+  const result = await School.deleteOne(query);
+
+  res.status(200).json(result);
 });
 
+// TODO
 // @desc    Bulk operations for school
-// @route   POST /api/admin/school/bulk
+// @route   POST /api/admin-panel/school/bulk
 // @access  Private
 const bulkOpsSchool = asyncHandler(async (req, res) => {
   const cmd = req.body.cmd;
@@ -245,7 +372,7 @@ const bulkOpsSchool = asyncHandler(async (req, res) => {
       throw new Error(result.body);
     }
 
-    return res.status(200).json({ success: true, msg: result.msg });
+    return res.status(200).json({ msg: result.msg });
   }
 
   if (!schools) {
@@ -265,7 +392,7 @@ const bulkOpsSchool = asyncHandler(async (req, res) => {
   if (cmd === "delete") {
     const result = await School.deleteMany(query);
 
-    return res.status(200).json({ success: true, msg: result });
+    return res.status(200).json({ msg: result });
   } else if (cmd === "export-json") {
     const schoolsToExport = await School.find(query)
       .select("-createdAt -updatedAt")
@@ -291,10 +418,155 @@ const bulkOpsSchool = asyncHandler(async (req, res) => {
   }
 });
 
-/** 3. Bus */
+/** 3. BusStop */
+
+// @desc    Get all bus stops
+// @route   GET /api/admin-panel/bus-stop
+// @access  Private
+const getBusStops = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.rows) || 10;
+  const sort = req.query.sort || "name";
+  const searchField = req.query.sf;
+  const searchValue = req.query.sv;
+
+  const query = {};
+
+  if (C.isUser(req.user.type)) query.user = req.user._id;
+  else if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  if (searchField && searchValue) {
+    if (searchField === "all") {
+      const fields = ["name", "address", "user.name", "manager.name"];
+
+      const searchQuery = UC.createSearchQuery(fields, searchValue);
+      query["$or"] = searchQuery["$or"];
+    } else {
+      const searchQuery = UC.createSearchQuery([searchField], searchValue);
+      query["$or"] = searchQuery["$or"];
+    }
+  }
+
+  const results = await UC.paginatedQuery(
+    BusStop,
+    query,
+    "name address",
+    page,
+    limit,
+    sort
+  );
+
+  if (!results) return res.status(200).json({ msg: C.PAGE_LIMIT_REACHED });
+
+  res.status(200).json(results);
+});
+
+// @desc    Get a bus-stop
+// @route   GET /api/admin-panel/bus-stop/:id
+// @access  Private
+const getBusStop = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id };
+
+  if (C.isUser(req.user.type)) query.user = req.user._id;
+  else if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  const busStop = await BusStop.findOne(query)
+    .populate("user manager", "name")
+    .lean();
+
+  if (!busStop) {
+    res.status(404);
+    throw new Error(C.getResourse404Error("BusStop", req.params.id));
+  }
+
+  res.status(200).json(busStop);
+});
+
+// @desc    Add a bus-stop
+// @route   POST /api/admin-panel/bus-stop
+// @access  Private
+const addBusStop = asyncHandler(async (req, res) => {
+  let user = req.body.user;
+  let manager = req.body.manager;
+
+  if (C.isUser(req.user.type)) {
+    user = req.user._id;
+    manager = req.user.manager;
+  }
+
+  const userQuery = { _id: user };
+
+  if (C.isManager(req.user.type)) {
+    userQuery.manager = req.user._id;
+    manager = req.user._id;
+  }
+
+  if (!(await User.any(userQuery))) {
+    res.status(400);
+    throw new Error(C.getResourse404Error("user", user));
+  }
+
+  if (!(await User.any({ _id: manager }))) {
+    res.status(400);
+    throw new Error(C.getResourse404Error("manager", manager));
+  }
+
+  const busStop = await BusStop.create({
+    name: req.body.name,
+    address: req.body.address,
+    lat: req.body.lat,
+    lon: req.body.lon,
+    user,
+    manager,
+  });
+
+  res.status(201).json({ msg: busStop._id });
+});
+
+// @desc    Update a bus-stop
+// @route   PATCH /api/admin-panel/bus-stop/:id
+// @access  Private
+const updateBusStop = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id };
+
+  if (C.isUser(req.user.type)) query.user = req.user._id;
+  else if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  if (!(await BusStop.any(query))) {
+    res.status(404);
+    throw new Error(C.getResourse404Error("BusStop", req.params.id));
+  }
+
+  const result = await BusStop.updateOne(query, {
+    $set: {
+      name: req.body.name,
+      address: req.body.address,
+      lat: req.body.lat,
+      lon: req.body.lon,
+    },
+  });
+
+  res.status(200).json(result);
+});
+
+// @desc    Delete a bus-stop
+// @route   DELETE /api/admin-panel/bus-stop/:id
+// @access  Private
+const deleteBusStop = asyncHandler(async (req, res) => {
+  const query = { _id: req.params.id };
+
+  if (C.isUser(req.user.type)) query.user = req.user._id;
+  else if (C.isManager(req.user.type)) query.manager = req.user._id;
+
+  const result = await BusStop.deleteOne(query);
+
+  res.status(200).json(result);
+});
+
+/** 4. Bus */
 
 // @desc    Get all buses
-// @route   GET /api/admin/bus
+// @route   GET /api/admin-panel/bus
 // @access  Private
 const getBuses = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
@@ -334,11 +606,11 @@ const getBuses = asyncHandler(async (req, res) => {
 
   if (!results) return res.status(200).json({ msg: C.PAGE_LIMIT_REACHED });
 
-  res.status(200).json({ success: true, ...results });
+  res.status(200).json(results);
 });
 
 // @desc    Get a bus
-// @route   GET /api/admin/bus/:id
+// @route   GET /api/admin-panel/bus/:id
 // @access  Private
 const getBus = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -354,29 +626,51 @@ const getBus = asyncHandler(async (req, res) => {
     throw new Error(C.getResourse404Error("Bus", req.params.id));
   }
 
-  res.status(200).json({ success: true, mnsg: bus });
+  res.status(200).json({ mnsg: bus });
 });
 
 // @desc    Add a bus
-// @route   POST /api/admin/bus
+// @route   POST /api/admin-panel/bus
 // @access  Private
 const addBus = asyncHandler(async (req, res) => {
-  const manager = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
-    ? req.body.manager
-    : req.user._id;
+  let user = req.body.user;
+  let manager = req.body.manager;
+
+  if (C.isUser(req.user.type)) {
+    user = req.user._id;
+    manager = req.user.manager;
+  }
+
+  const userQuery = { _id: user };
+
+  if (C.isManager(req.user.type)) {
+    userQuery.manager = req.user._id;
+    manager = req.user._id;
+  }
+
+  if (!(await User.any(userQuery))) {
+    res.status(400);
+    throw new Error(C.getResourse404Error("user", user));
+  }
+
+  if (!(await User.any({ _id: manager }))) {
+    res.status(400);
+    throw new Error(C.getResourse404Error("manager", manager));
+  }
 
   const bus = await Bus.create({
     name: req.body.name,
     device: req.body.device,
+    mobile: req.body.mobile,
+    user,
     manager,
-    createdBy: req.user._id,
   });
 
-  res.status(201).json({ success: true, msg: bus._id });
+  res.status(201).json({ msg: bus._id });
 });
 
 // @desc    Update a bus
-// @route   PUT /api/admin/bus/:id
+// @route   PUT /api/admin-panel/bus/:id
 // @access  Private
 const updateBus = asyncHandler(async (req, res) => {
   const matchQuery = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -397,11 +691,11 @@ const updateBus = asyncHandler(async (req, res) => {
     },
   });
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json({ msg: result });
 });
 
 // @desc    Delete a bus
-// @route   DELETE /api/admin/bus/:id
+// @route   DELETE /api/admin-panel/bus/:id
 // @access  Private
 const deleteBus = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -415,11 +709,11 @@ const deleteBus = asyncHandler(async (req, res) => {
     throw new Error(C.getResourse404Error("Bus", req.params.id));
   }
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json({ msg: result });
 });
 
 // @desc    Bulk operations for bus
-// @route   POST /api/admin/bus/bulk
+// @route   POST /api/admin-panel/bus/bulk
 // @access  Private
 const bulkOpsBus = asyncHandler(async (req, res) => {
   const cmd = req.body.cmd;
@@ -440,7 +734,7 @@ const bulkOpsBus = asyncHandler(async (req, res) => {
       throw new Error(result.body);
     }
 
-    return res.status(200).json({ success: true, msg: result.msg });
+    return res.status(200).json({ msg: result.msg });
   }
 
   if (!buses) {
@@ -459,7 +753,7 @@ const bulkOpsBus = asyncHandler(async (req, res) => {
       createdBy: req.user._id,
     });
 
-    return res.status(200).json({ success: true, ...result });
+    return res.status(200).json({ ...result });
   } else if (cmd === "export-json") {
     const busesToExport = await Bus.find({
       _id: buses,
@@ -488,10 +782,10 @@ const bulkOpsBus = asyncHandler(async (req, res) => {
   }
 });
 
-/** 4. Student */
+/** 5. Student */
 
 // @desc    Get all students
-// @route   GET /api/admin/student
+// @route   GET /api/admin-panel/student
 // @access  Private
 const getStudents = asyncHandler(async (req, res) => {
   const page = parseInt(req.query.page) || 1;
@@ -536,11 +830,11 @@ const getStudents = asyncHandler(async (req, res) => {
 
   if (!results) return res.status(200).json({ msg: C.PAGE_LIMIT_REACHED });
 
-  res.status(200).json({ success: true, ...results });
+  res.status(200).json(results);
 });
 
 // @desc    Get a student
-// @route   GET /api/admin/student/:id
+// @route   GET /api/admin-panel/student/:id
 // @access  Private
 const getStudent = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -556,11 +850,11 @@ const getStudent = asyncHandler(async (req, res) => {
     throw new Error(C.getResourse404Error("Student", req.params.id));
   }
 
-  res.status(200).json({ success: true, msg: student });
+  res.status(200).json({ msg: student });
 });
 
 // @desc    Add a student
-// @route   POST /api/admin/student
+// @route   POST /api/admin-panel/student
 // @access  Private
 const addStudent = asyncHandler(async (req, res) => {
   if (!req.body.fname) {
@@ -631,11 +925,11 @@ const addStudent = asyncHandler(async (req, res) => {
     createdBy: req.user._id,
   });
 
-  res.status(201).json({ success: true, msg: student._id });
+  res.status(201).json({ msg: student._id });
 });
 
 // @desc    Update a student
-// @route   PUT /api/admin/student/:id
+// @route   PUT /api/admin-panel/student/:id
 // @access  Private
 const updateStudent = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -673,11 +967,11 @@ const updateStudent = asyncHandler(async (req, res) => {
     },
   });
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json({ msg: result });
 });
 
 // @desc    Delete a student
-// @route   DELETE /api/admin/student/:id
+// @route   DELETE /api/admin-panel/student/:id
 // @access  Private
 const deleteStudent = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -691,11 +985,11 @@ const deleteStudent = asyncHandler(async (req, res) => {
     throw new Error(C.getResourse404Error("Student", req.params.id));
   }
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json({ msg: result });
 });
 
 // @desc    Bulk operations for student
-// @route   POST /api/admin/student/bulk
+// @route   POST /api/admin-panel/student/bulk
 // @access  Private
 const bulkOpsStudent = asyncHandler(async (req, res) => {
   const cmd = req.body.cmd;
@@ -728,7 +1022,7 @@ const bulkOpsStudent = asyncHandler(async (req, res) => {
 
     fs.unlinkSync(path.join(req.file.path));
 
-    return res.status(200).json({ success: true, msg: result.msg });
+    return res.status(200).json({ msg: result.msg });
   }
 
   if (!students) {
@@ -748,7 +1042,7 @@ const bulkOpsStudent = asyncHandler(async (req, res) => {
   if (cmd === "delete") {
     const result = await Student.deleteMany(query);
 
-    return res.status(200).json({ success: true, msg: result });
+    return res.status(200).json({ msg: result });
   } else if (cmd === "export-json") {
     const studentsToExport = await Student.find(query)
       .select("-createdAt -updatedAt")
@@ -775,7 +1069,7 @@ const bulkOpsStudent = asyncHandler(async (req, res) => {
 });
 
 // @desc    Add pickup locations for student
-// @route   POST /api/admin/student/pik-loc/:id
+// @route   POST /api/admin-panel/student/pik-loc/:id
 // @access  Private
 const addPickupLocation = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -798,11 +1092,11 @@ const addPickupLocation = asyncHandler(async (req, res) => {
     },
   });
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json({ msg: result });
 });
 
 // @desc    Add pickup locations for student
-// @route   DELETE /api/admin/student/pik-loc/:id
+// @route   DELETE /api/admin-panel/student/pik-loc/:id
 // @access  Private
 const removePickupLocation = asyncHandler(async (req, res) => {
   const query = [C.SUPERADMIN, C.ADMIN].includes(req.user.type)
@@ -818,12 +1112,16 @@ const removePickupLocation = asyncHandler(async (req, res) => {
     $pull: { pickupLocations: { _id: req.body.id } },
   });
 
-  res.status(200).json({ success: true, msg: result });
+  res.status(200).json({ msg: result });
 });
 
 module.exports = {
   getUsers,
+  getUser,
+  requiredDataUser,
   createUser,
+  updateUser,
+  deleteUser,
 
   getSchools,
   getSchool,
@@ -831,6 +1129,12 @@ module.exports = {
   updateSchool,
   deleteSchool,
   bulkOpsSchool,
+
+  getBusStops,
+  getBusStop,
+  addBusStop,
+  updateBusStop,
+  deleteBusStop,
 
   getBuses,
   getBus,

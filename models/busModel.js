@@ -33,6 +33,14 @@ const deviceSchema = new mongoose.Schema(
   { minimize: false }
 );
 
+const mobileSchema = new mongoose.Schema({
+  device_id: { type: String, default: "" },
+  dt: { type: Date, default: 0 },
+  lat: { type: Number, default: 0 },
+  lon: { type: Number, default: 0 },
+  admissionNo: { type: String, default: "" },
+});
+
 const schema = new mongoose.Schema(
   {
     name: { type: String, required: [true, C.FIELD_IS_REQ] },
@@ -42,18 +50,14 @@ const schema = new mongoose.Schema(
     },
     alternate: { type: mongoose.SchemaTypes.ObjectId, ref: "buses" },
     device: deviceSchema,
-    mobile: {
-      dt: { type: Date, default: 0 },
-      lat: { type: Number, default: 0 },
-      lon: { type: Number, default: 0 },
-      admissionNo: { type: String, default: "" },
-    },
-    manager: {
+    mobile: mobileSchema,
+    stops: [{ type: mongoose.SchemaTypes.ObjectId, ref: "bus_stops" }],
+    user: {
       type: mongoose.SchemaTypes.ObjectId,
       required: [true, C.FIELD_IS_REQ],
       ref: "users",
     },
-    createdBy: {
+    manager: {
       type: mongoose.SchemaTypes.ObjectId,
       required: [true, C.FIELD_IS_REQ],
       ref: "users",

@@ -4,74 +4,114 @@ const {
   studentPhotoUpload,
   studentBulkImportUpload,
 } = require("../middlewares/multerMiddleware");
+const AdminPanel = require("../controllers/adminPanelController");
+const AdminPanelUtil = require("../controllers/adminPanelUtilController");
 
-const AC = require("../controllers/adminController");
+const adminPanelRouter = express.Router();
 
-const adminRouter = express.Router();
-
-/**
- * Route: /api/admin/user
- */
-
-// 1. User Routes
+/******************
+ * 1. User Routes
+ * /api/admin-panel/user
+ ******************/
 const userRouter = express.Router();
 
-userRouter.route("/").get(AC.getUsers).post(AC.createUser);
+userRouter.route("/").get(AdminPanel.getUsers).post(AdminPanel.createUser);
+userRouter.get("/required-data", AdminPanel.requiredDataUser);
+userRouter
+  .route("/:id")
+  .get(AdminPanel.getUser)
+  .patch(AdminPanel.updateUser)
+  .delete(AdminPanel.deleteUser);
 
-// 2. School Routes
+/******************
+ * 2. School Routes
+ * /api/admin-panel/school
+ ******************/
 const schoolRouter = express.Router();
 
-schoolRouter.route("/").get(AC.getSchools).post(AC.addSchool);
-
+schoolRouter.route("/").get(AdminPanel.getSchools).post(AdminPanel.addSchool);
 schoolRouter
   .route("/:id")
-  .get(AC.getSchool)
-  .put(AC.updateSchool)
-  .delete(AC.deleteSchool);
+  .get(AdminPanel.getSchool)
+  .patch(AdminPanel.updateSchool)
+  .delete(AdminPanel.deleteSchool);
 
 schoolRouter.post(
   "/bulk",
   memoryUpload.single("school-file"),
-  AC.bulkOpsSchool
+  AdminPanel.bulkOpsSchool
 );
 
-// 3. Bus Routes
+/******************
+ * 3. BusStop Routes
+ * /api/admin-panel/bus
+ ******************/
+const busStopRouter = express.Router();
+
+busStopRouter
+  .route("/")
+  .get(AdminPanel.getBusStops)
+  .post(AdminPanel.addBusStop);
+
+busStopRouter
+  .route("/:id")
+  .get(AdminPanel.getBusStop)
+  .patch(AdminPanel.updateBusStop)
+  .delete(AdminPanel.deleteBusStop);
+
+/******************
+ * 4. Bus Routes
+ * /api/admin-panel/bus
+ ******************/
 const busRouter = express.Router();
 
-busRouter.route("/").get(AC.getBuses).post(AC.addBus);
+busRouter.route("/").get(AdminPanel.getBuses).post(AdminPanel.addBus);
 
-busRouter.route("/:id").get(AC.getBus).put(AC.updateBus).delete(AC.deleteBus);
+busRouter
+  .route("/:id")
+  .get(AdminPanel.getBus)
+  .patch(AdminPanel.updateBus)
+  .delete(AdminPanel.deleteBus);
 
-busRouter.post("/bulk", memoryUpload.single("bus-file"), AC.bulkOpsBus);
+busRouter.post("/bulk", memoryUpload.single("bus-file"), AdminPanel.bulkOpsBus);
 
-// 4. Student Routes
+/******************
+ * 5. Student Routes
+ * /api/admin-panel/student
+ ******************/
 const studentRouter = express.Router();
 
 studentRouter
   .route("/")
-  .get(AC.getStudents)
-  .post(studentPhotoUpload.single("photo"), AC.addStudent);
+  .get(AdminPanel.getStudents)
+  .post(studentPhotoUpload.single("photo"), AdminPanel.addStudent);
 
 studentRouter
   .route("/:id")
-  .get(AC.getStudent)
-  .put(AC.updateStudent)
-  .delete(AC.deleteStudent);
+  .get(AdminPanel.getStudent)
+  .patch(AdminPanel.updateStudent)
+  .delete(AdminPanel.deleteStudent);
 
 studentRouter.post(
   "/bulk",
   studentBulkImportUpload.single("import"),
-  AC.bulkOpsStudent
+  AdminPanel.bulkOpsStudent
 );
 
 studentRouter
   .route("/pik-loc/:id")
-  .post(AC.addPickupLocation)
-  .delete(AC.removePickupLocation);
+  .post(AdminPanel.addPickupLocation)
+  .delete(AdminPanel.removePickupLocation);
 
-adminRouter.use("/user", userRouter);
-adminRouter.use("/school", schoolRouter);
-adminRouter.use("/bus", busRouter);
-adminRouter.use("/student", studentRouter);
+const utilRouter = express.Router();
+utilRouter.get("/manager-list", AdminPanelUtil.getManagerList);
+utilRouter.get("/user-list", AdminPanelUtil.getUserList);
 
-module.exports = adminRouter;
+adminPanelRouter.use("/user", userRouter);
+adminPanelRouter.use("/school", schoolRouter);
+adminPanelRouter.use("/bus-stop", busStopRouter);
+adminPanelRouter.use("/bus", busRouter);
+adminPanelRouter.use("/student", studentRouter);
+adminPanelRouter.use("/util", utilRouter);
+
+module.exports = adminPanelRouter;

@@ -2,13 +2,6 @@ const mongoose = require("mongoose");
 const C = require("../constants");
 const { any } = require("../plugins/schemaPlugins");
 
-const pickupLocationSchema = new mongoose.Schema({
-  address: { type: String, required: [true, C.FIELD_IS_REQ] },
-  lat: { type: Number, required: [true, C.FIELD_IS_REQ] },
-  lon: { type: Number, required: [true, C.FIELD_IS_REQ] },
-  radius: { type: Number, required: [true, C.FIELD_IS_REQ] },
-});
-
 const schema = new mongoose.Schema(
   {
     name: {
@@ -45,7 +38,12 @@ const schema = new mongoose.Schema(
       ref: "buses",
       required: [true, C.FIELD_IS_REQ],
     },
-    pickupLocations: [pickupLocationSchema],
+    busStop: [{ type: mongoose.SchemaTypes.ObjectId, ref: "bus_stops" }],
+    user: {
+      type: mongoose.SchemaTypes.ObjectId,
+      ref: "users",
+      required: [true, C.FIELD_IS_REQ],
+    },
     manager: {
       type: mongoose.SchemaTypes.ObjectId,
       ref: "users",

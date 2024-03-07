@@ -1,4 +1,5 @@
 const Bus = require("../models/busModel");
+const getDeviceHistoryModel = require("../models/deviceHistoryModel");
 const UnusedDevice = require("../models/unusedDeviceModel");
 const { getAngle, getLenBtwPointsInKm, writeLog } = require("../utils/common");
 const { isAlphaNumeric } = require("../utils/validators");
@@ -166,6 +167,9 @@ const insert_db_loc = async (loc) => {
   // check for duplicate locations
   if (locFilter(loc, locPrev)) return;
 
+  // Save history of device
+  await insertDeviceHistory(loc);
+
   if (loc.lat == 0 || loc.lon == 0) return;
 
   if (loc.dt_tracker < locPrev.dt_tracker) return;
@@ -295,6 +299,26 @@ const updateDeviceLocData = async (loc, locPrev) => {
       }
     );
   }
+
+  return res;
+};
+
+const insertDeviceHistory = async (loc) => {
+  if (loc.lat === 0 && loc.lng === 0) return false;
+
+  const DeviceHistory = getDeviceHistoryModel(loc.imei);
+  const res = await DeviceHistory.create({
+    dt_server: loc.dt_server,
+    dt_tracker: loc.dt_tracker,
+    lat: loc.lat,
+    lng: loc.lng,
+    altitude: loc.altitude,
+    angle: loc.angle,
+    speed: loc.speed,
+    params: loc.params,
+    // odometer: loc.odometer,
+    // engine_hours: loc.engine_hours,
+  });
 
   return res;
 };

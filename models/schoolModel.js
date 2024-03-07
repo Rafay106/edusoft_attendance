@@ -44,15 +44,15 @@ const schema = new mongoose.Schema(
         },
       },
     },
+    user: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: [true, C.FIELD_IS_REQ],
+      ref: "users",
+    },
     manager: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "users",
       required: [true, C.FIELD_IS_REQ],
-    },
-    createdBy: {
-      type: mongoose.Schema.Types.ObjectId,
       ref: "users",
-      required: [true, C.FIELD_IS_REQ],
     },
   },
   { timestamps: true }
